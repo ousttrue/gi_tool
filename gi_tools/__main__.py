@@ -1,3 +1,7 @@
+#
+# https://python-gtk-3-tutorial.readthedocs.io/en/latest/treeview.html
+# https://palepoli.skr.jp/tips/pygobject/treeview.php
+#
 import gi
 import pathlib
 
@@ -12,8 +16,16 @@ class Window(Gtk.ApplicationWindow):
     def __init__(self, app):
         Gtk.ApplicationWindow.__init__(self, application=app, title='gi_tools')
         ''' widget '''
-        self.list = Gtk.ListBox()
-        self.set_child(self.list)
+        # model
+        self.model = Gtk.ListStore(str)
+
+        self.tree = Gtk.TreeView(model=self.model)
+        # column
+        cell = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn(cell_renderer=cell, title='gir', text=0)
+        self.tree.append_column(column)
+
+        self.set_child(self.tree)
         self.present()
 
     def load(self, path: pathlib.Path):
@@ -23,7 +35,7 @@ class Window(Gtk.ApplicationWindow):
         girs = [e for e in path.iterdir() if e.suffix == '.gir']
 
         for e in sorted(girs, key=lambda x: x.stem):
-            self.list.insert(Gtk.Label(label=e.stem), -1)
+            self.model.append([e.stem])
 
 
 class Application(Gtk.Application):

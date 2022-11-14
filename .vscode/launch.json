@@ -5,6 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "generator",
+            "type": "python",
+            "request": "launch",
+            "module": "gi_tools.generator",
+            "justMyCode": true
+        },
+        {
             "name": "gi_tools",
             "type": "python",
             "request": "launch",

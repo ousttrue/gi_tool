@@ -4,18 +4,33 @@
 #
 import gi
 import pathlib
+import os
 
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk
 
-PREFIX = pathlib.Path('C:/gnome')
+PREFIX = pathlib.Path(os.environ['PKG_CONFIG_PATH']).parent.parent
 
 
 class Window(Gtk.ApplicationWindow):
 
     def __init__(self, app):
-        Gtk.ApplicationWindow.__init__(self, application=app, title='gi_tools')
-        ''' widget '''
+        super().__init__(application=app, title='gi_tools')
+
+        self.hpaned = Gtk.Paned.new(Gtk.Orientation.HORIZONTAL)
+
+        self.frame1 = Gtk.Frame.new()
+        self.hpaned.set_start_child(self.frame1)
+        self.create_treeview()
+        self.frame1.set_child(self.tree)
+
+        self.frame2 = Gtk.Frame.new()
+        self.hpaned.set_end_child(self.frame2)
+
+        self.set_child(self.hpaned)
+        self.present()
+
+    def create_treeview(self):
         # model
         self.model = Gtk.ListStore(str)
 
@@ -24,9 +39,6 @@ class Window(Gtk.ApplicationWindow):
         cell = Gtk.CellRendererText()
         column = Gtk.TreeViewColumn(cell_renderer=cell, title='gir', text=0)
         self.tree.append_column(column)
-
-        self.set_child(self.tree)
-        self.present()
 
     def load(self, path: pathlib.Path):
         if not path.exists():

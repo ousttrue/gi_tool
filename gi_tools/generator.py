@@ -63,15 +63,18 @@ class GIParam:
     def __str__(self) -> str:
         if self.is_this:
             return "self"
+        elif self.name == "...":
+            return "*args"
         else:
             return f"{self.name}: {py_type(self.type)}"
 
 
 class GIMethod:
-    def __init__(self, element: ET.Element) -> None:
+    def __init__(self, element: ET.Element, is_static=False) -> None:
         self.name = element.attrib["name"]
         self.doc = None
         self.return_type = None
+        self.is_static = is_static
         self.parameters: List[GIParam] = []
         for child in element:
             tag = get_tag(child)
@@ -99,7 +102,7 @@ class GIMethod:
                 case "doc":
                     pass
                 case "type":
-                    self.return_type = child.attrib.get("c:type")
+                    self.return_type = child.attrib["name"]
 
     def parse_parameters(self, element: ET.Element):
         for child in element:
@@ -111,32 +114,38 @@ class GIMethod:
             else:
                 assert False
 
-    def __str__(self):
+    def to_str(self, indent="    "):
         sio = io.StringIO()
-        parameters = ", ".join(str(p) for p in self.parameters)
+        if self.is_static:
+            sio.write(f"{indent}@staticmethod\n")
+        parameters = ", ".join(str(p) for p in self.parameters)        
         sio.write(
-            f"""    def {self.name}({parameters}) -> {py_type(self.return_type)}:\n"""
+            f"""{indent}def {self.name}({parameters}) -> {py_type(self.return_type)}:\n"""
         )
         if self.doc:
-            sio.write(f'''        """{self.doc}"""\n''')
-        sio.write("        ...\n\n")
+            sio.write(f'''{indent}    """{self.doc}"""\n''')
+        sio.write(f"{indent}    ...\n\n")
         return sio.getvalue()
+
+    def __str__(self) -> str:
+        return self.to_str()
 
 
 class GIClass:
     def __init__(self, element: ET.Element) -> None:
         self.name = element.attrib["name"]
         self.doc = None
+        self.parent = element.attrib.get("parent")
         assert self.name
-        self.methods = {}
+        self.methods: List[GIMethod] = []
 
         for child in element:
             tag = get_tag(child)
             match tag:
                 case "method":
-                    name = child.attrib["name"]
-                    if name:
-                        self.methods[name] = GIMethod(child)
+                    self.methods.append(GIMethod(child))
+                case "constructor" | "function":
+                    self.methods.append(GIMethod(child, is_static=True))
                 case "doc":
                     self.doc = child.text
                 case "doc-deprecated":
@@ -151,8 +160,6 @@ class GIClass:
                     pass
                 case "implements":
                     pass
-                case "function":
-                    pass
                 case "virtual-method":
                     pass
                 case "field":
@@ -164,14 +171,16 @@ class GIClass:
 
     def __str__(self):
         sio = io.StringIO()
-        sio.write(f"class {self.name}:\n")
+        if self.parent:
+            sio.write(f"class {self.name}({self.parent}):\n")
+        else:
+            sio.write(f"class {self.name}:\n")
         if self.doc:
             sio.write(f'    """{self.doc}"""\n')
 
         if self.methods:
-            for key in self.methods.keys():
-                method = self.methods[key]
-                sio.write(str(method))
+            for method in self.methods:
+                sio.write(method.to_str(indent="    "))
         else:
             sio.write("    pass\n")
         return sio.getvalue()
@@ -232,8 +241,9 @@ class GIEnum:
 
 class GIModule:
     def __init__(self, module: types.ModuleType) -> None:
-        self.classes: dict[str, object] = {}
         self.constants: List[GIEnumValue] = []
+        self.classes: dict[str, object] = {}
+        self.functions: List[GIMethod] = []
 
         gir = GIR_BASE / f"{module._namespace}-{module._version}.gir"
         tree = ET.parse(gir)
@@ -280,9 +290,9 @@ class GIModule:
                     self.classes[klass.name] = klass
                 case "constant":
                     self.constants.append(GIEnumValue.from_element(child))
-                case "alias":
-                    pass
                 case "function":
+                    self.functions.append(GIMethod(child))
+                case "alias":
                     pass
                 case "function-macro":
                     pass
@@ -324,6 +334,10 @@ from enum import Enum, IntFlag
     for key in sorted(gi_module.classes.keys()):
         klass = gi_module.classes[key]
         print(klass)
+
+    # functions
+    for f in gi_module.functions:
+        print(f.to_str(indent=""))
 
 
 def main():

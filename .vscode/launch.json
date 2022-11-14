@@ -10,6 +10,7 @@
             "request": "launch",
             "module": "gi_tool.generator",
             "args": [
+                "${env:PREFIX}/share/gir-1.0",
                 "Gtk",
                 "4.0"
             ],

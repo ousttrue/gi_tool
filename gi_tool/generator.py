@@ -9,7 +9,6 @@ import inspect
 import xml.etree.ElementTree as ET
 from typing import List, Optional, NamedTuple
 
-GIR_BASE = pathlib.Path("D:/gnome/share/gir-1.0")
 NS = {"": "http://www.gtk.org/introspection/core/1.0"}
 C_NS = {"c": "http://www.gtk.org/introspection/c/1.0"}
 PATTERN = re.compile(r"\{([^}]+)\}(.+)")
@@ -219,6 +218,8 @@ class GIEnum:
                 case "function":
                     # ?
                     pass
+                case "source-position":
+                    pass
                 case _:
                     assert False
 
@@ -240,12 +241,13 @@ class GIEnum:
 
 
 class GIModule:
-    def __init__(self, module: types.ModuleType) -> None:
+    def __init__(self, gir_dir: pathlib.Path, module: types.ModuleType) -> None:
+        assert gir_dir.exists()
         self.constants: List[GIEnumValue] = []
         self.classes: dict[str, object] = {}
         self.functions: List[GIMethod] = []
 
-        gir = GIR_BASE / f"{module._namespace}-{module._version}.gir"
+        gir = gir_dir / f"{module._namespace}-{module._version}.gir"
         tree = ET.parse(gir)
         root = tree.getroot()
         namespace = root.find("namespace", NS)
@@ -310,11 +312,11 @@ class GIModule:
                     assert False
 
 
-def generate(name: str, version: str):
+def generate(gir_dir: pathlib.Path, name: str, version: str):
     gi.require_version(name, version)
     module = importlib.import_module(f".{name}", "gi.repository")
 
-    gi_module = GIModule(module)
+    gi_module = GIModule(gir_dir, module)
 
     print(
         """from typing import List
@@ -342,13 +344,14 @@ from enum import Enum, IntFlag
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="gi_tool.generator", description="generate pygobject stub from gir file"
+        prog="gi_tool.generator", description="generate pygobject stub from {gir_dir}/{module}-{version}.gir"
     )
+    parser.add_argument("gir_dir", help="PREFIX/share/gir-1.0")
     parser.add_argument("module", help="Gtk, Gst ... etc")
     parser.add_argument("version", help="1.0, 2.0, 3.0, 4.0 ... etc")
     parsed = parser.parse_args()
 
-    generate(parsed.module, parsed.version)
+    generate(pathlib.Path(parsed.gir_dir), parsed.module, parsed.version)
 
 
 if __name__ == "__main__":

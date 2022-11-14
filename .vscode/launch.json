@@ -9,6 +9,10 @@
             "type": "python",
             "request": "launch",
             "module": "gi_tools.generator",
+            "args": [
+                "Gst",
+                "1.0"
+            ],
             "justMyCode": true
         },
         {

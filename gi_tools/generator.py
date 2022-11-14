@@ -1,4 +1,5 @@
 import pathlib
+import argparse
 import io
 import re
 import types
@@ -6,12 +7,12 @@ import gi
 import importlib
 import inspect
 import xml.etree.ElementTree as ET
-from typing import List, Optional
+from typing import List, Optional, NamedTuple
 
-GIR_BASE = pathlib.Path('D:/gnome/share/gir-1.0')
-NS = {'': 'http://www.gtk.org/introspection/core/1.0'}
-C_NS = {'c': 'http://www.gtk.org/introspection/c/1.0'}
-PATTERN = re.compile(r'\{([^}]+)\}(.+)')
+GIR_BASE = pathlib.Path("D:/gnome/share/gir-1.0")
+NS = {"": "http://www.gtk.org/introspection/core/1.0"}
+C_NS = {"c": "http://www.gtk.org/introspection/c/1.0"}
+PATTERN = re.compile(r"\{([^}]+)\}(.+)")
 
 
 def get_tag(child: ET.Element) -> str:
@@ -22,20 +23,20 @@ def get_tag(child: ET.Element) -> str:
 
 def py_type(gir_type: Optional[str]) -> str:
     if not gir_type:
-        return 'None'
+        return "None"
     match gir_type:
-        case 'gboolean':
-            return 'bool'
-        case 'gint' | 'guint':
-            return 'int'
-        case 'gfloat' | 'gdouble':
-            return 'float'
-        case 'utf8':
-            return 'str'
-        case 'List[utf8]':
-            return 'List[str]'
-        case 'gpointer':
-            return 'object'
+        case "gboolean":
+            return "bool"
+        case "gint" | "guint" | "gsize" | "gssize":
+            return "int"
+        case "gfloat" | "gdouble":
+            return "float"
+        case "utf8":
+            return "str"
+        case "List[utf8]":
+            return "List[str]"
+        case "gpointer":
+            return "object"
         case _:
             return f"'{gir_type}'"
 
@@ -43,49 +44,49 @@ def py_type(gir_type: Optional[str]) -> str:
 class GIParam:
     def __init__(self, element: ET.Element, is_this=False) -> None:
         self.is_this = is_this
-        self.name = element.attrib['name']
+        self.name = element.attrib["name"]
         self.type = str(element)
         for child in element:
             tag = get_tag(child)
             match tag:
-                case 'doc':
+                case "doc":
                     self.doc = child.text
-                case 'type':
-                    self.type = child.attrib['name']
-                case 'array':
+                case "type":
+                    self.type = child.attrib["name"]
+                case "array":
                     self.type = f"List[{child.find('type', NS).attrib['name']}]"
-                case 'varargs':
+                case "varargs":
                     self.type = f"varargs"
                 case _:
                     assert False
 
     def __str__(self) -> str:
         if self.is_this:
-            return 'self'
+            return "self"
         else:
             return f"{self.name}: {py_type(self.type)}"
 
 
 class GIMethod:
     def __init__(self, element: ET.Element) -> None:
-        self.name = element.attrib['name']
+        self.name = element.attrib["name"]
         self.doc = None
         self.return_type = None
         self.parameters: List[GIParam] = []
         for child in element:
             tag = get_tag(child)
             match tag:
-                case 'return-value':
+                case "return-value":
                     self.parse_return(child)
-                case 'parameters':
+                case "parameters":
                     self.parse_parameters(child)
-                case 'attribute':
+                case "attribute":
                     pass
-                case 'doc':
+                case "doc":
                     self.doc = child.text
-                case 'doc-deprecated':
+                case "doc-deprecated":
                     pass
-                case 'source-position':
+                case "source-position":
                     pass
                 case _:
                     print(tag)
@@ -95,70 +96,76 @@ class GIMethod:
         for child in element:
             tag = get_tag(child)
             match tag:
-                case 'doc':
+                case "doc":
                     pass
-                case 'type':
-                    self.return_type = child.attrib.get('c:type')
+                case "type":
+                    self.return_type = child.attrib.get("c:type")
 
     def parse_parameters(self, element: ET.Element):
         for child in element:
             tag = get_tag(child)
-            if tag == 'parameter':
+            if tag == "parameter":
                 self.parameters.append(GIParam(child))
-            elif tag == 'instance-parameter':
+            elif tag == "instance-parameter":
                 self.parameters.append(GIParam(child, True))
             else:
-                assert (False)
+                assert False
 
     def __str__(self):
         sio = io.StringIO()
         if self.doc:
             sio.write(f'''    """{self.doc}"""\n''')
-        parameters = ', '.join(str(p) for p in self.parameters)
+        parameters = ", ".join(str(p) for p in self.parameters)
         sio.write(
-            f'''    def {self.name}({parameters}) -> {py_type(self.return_type)}:...\n\n''')
+            f"""    def {self.name}({parameters}) -> {py_type(self.return_type)}:...\n\n"""
+        )
         return sio.getvalue()
 
 
 class GIClass:
     def __init__(self, element: ET.Element) -> None:
-        self.name = element.attrib['name']
-        assert (self.name)
+        self.name = element.attrib["name"]
+        self.doc = None
+        assert self.name
         self.methods = {}
 
         for child in element:
             tag = get_tag(child)
             match tag:
-                case 'method':
-                    name = child.attrib['name']
+                case "method":
+                    name = child.attrib["name"]
                     if name:
                         self.methods[name] = GIMethod(child)
-                case 'doc':
+                case "doc":
+                    self.doc = child.text
+                case "doc-deprecated":
                     pass
-                case 'doc-deprecated':
+                case "source-position":
                     pass
-                case 'source-position':
+                case "constructor":
                     pass
-                case 'constructor':
+                case "property":
                     pass
-                case 'property':
+                case "signal":
                     pass
-                case 'signal':
+                case "implements":
                     pass
-                case 'implements':
+                case "function":
                     pass
-                case 'function':
+                case "virtual-method":
                     pass
-                case 'virtual-method':
+                case "field":
                     pass
-                case 'field':
+                case "union":
                     pass
                 case _:
                     assert False
 
     def __str__(self):
         sio = io.StringIO()
-        sio.write(f'class {self.name}:\n')
+        if self.doc:
+            sio.write(f'"""{self.doc}"""\n')
+        sio.write(f"class {self.name}:\n")
         if self.methods:
             for key in self.methods.keys():
                 method = self.methods[key]
@@ -168,22 +175,74 @@ class GIClass:
         return sio.getvalue()
 
 
+class GIEnumValue(NamedTuple):
+    name: str
+    value: str
+    doc: Optional[str]
+
+    @staticmethod
+    def from_element(element: ET.Element) -> "GIEnumValue":
+        name = element.attrib["name"].upper()
+        value = element.attrib["value"]
+        doc = element.find("doc", NS)
+        doc_text = None
+        if doc != None:
+            doc_text = doc.text
+        return GIEnumValue(name, value, doc_text)
+
+
+class GIEnum:
+    def __init__(self, element: ET.Element, is_intflag=False) -> None:
+        self.doc = None
+        self.name = element.attrib["name"]
+        self.values: List[GIEnumValue] = []
+        self.is_intflag = is_intflag
+
+        for child in element:
+            tag = get_tag(child)
+            match tag:
+                case "doc":
+                    self.doc = child.text
+                case "member":
+                    self.values.append(GIEnumValue.from_element(child))
+                case "function":
+                    # ?
+                    pass
+                case _:
+                    assert False
+
+    def __str__(self) -> str:
+        sio = io.StringIO()
+        if self.doc:
+            sio.write(f'"""{self.doc}"""\n')
+        if self.is_intflag:
+            sio.write(f"class {self.name}(IntFlag):\n")
+        else:
+            sio.write(f"class {self.name}(Enum):\n")
+        for value in self.values:
+            sio.write(f"    {value.name} = {value.value}\n")
+            if value.doc:
+                sio.write(f'    """{value.doc}"""\n')
+        sio.write("\n")
+        return sio.getvalue()
+
+
 class GIModule:
-
     def __init__(self, module: types.ModuleType) -> None:
-        self.classes: dict[str, GIClass] = {}
+        self.classes: dict[str, object] = {}
+        self.constants: List[GIEnumValue] = []
 
-        gir = GIR_BASE / f'{module._namespace}-{module._version}.gir'
+        gir = GIR_BASE / f"{module._namespace}-{module._version}.gir"
         tree = ET.parse(gir)
         root = tree.getroot()
-        namespace = root.find('namespace', NS)
+        namespace = root.find("namespace", NS)
         assert namespace
 
         # for key in dir(module):
         #     attr = getattr(module, key)
         #     self.process_obj(attr, namespace)
 
-    # def process_obj(self, parent, gir: ET.Element):
+        # def process_obj(self, parent, gir: ET.Element):
         # print(parent)
         # for key in dir(parent):
         #     if key.startswith('__'):
@@ -207,35 +266,32 @@ class GIModule:
         for child in namespace:
             tag = get_tag(child)
             match tag:
-                case 'class':
-                    name = child.attrib['name']
-                    if name in self.classes:
-                        ET.dump(child)
-                        assert False
+                case "class":
                     klass = GIClass(child)
-                    assert klass.name == name
-                    self.classes[name] = klass
-                case 'alias':
+                    self.classes[klass.name] = klass
+                case "enumeration":
+                    klass = GIEnum(child)
+                    self.classes[klass.name] = klass
+                case "bitfield":
+                    klass = GIEnum(child, is_intflag=True)
+                    self.classes[klass.name] = klass
+                case "constant":
+                    self.constants.append(GIEnumValue.from_element(child))
+                case "alias":
                     pass
-                case 'function':
+                case "function":
                     pass
-                case 'function-macro':
+                case "function-macro":
                     pass
-                case 'constant':
+                case "record":
                     pass
-                case 'record':
+                case "interface":
                     pass
-                case 'interface':
+                case "callback":
                     pass
-                case 'enumeration':
+                case "boxed":
                     pass
-                case 'bitfield':
-                    pass
-                case 'callback':
-                    pass
-                case 'boxed':
-                    pass
-                case 'docsection':
+                case "docsection":
                     pass
                 case _:
                     assert False
@@ -243,20 +299,38 @@ class GIModule:
 
 def generate(name: str, version: str):
     gi.require_version(name, version)
-    module = importlib.import_module(f'.{name}', 'gi.repository')
+    module = importlib.import_module(f".{name}", "gi.repository")
 
     gi_module = GIModule(module)
-    w = gi_module.classes['Window']
 
-    print('''from typing import List
+    print(
+        """from typing import List
 import gi
 from gi.repository import Pango, Gdk, Gio, GObject
-''')
+from enum import Enum, IntFlag
+"""
+    )
+
+    for value in gi_module.constants:
+        print(f"    {value.name} = {value.value}\n")
+        if value.doc:
+            print(f'    """{value.doc}"""\n')
 
     for key in sorted(gi_module.classes.keys()):
         klass = gi_module.classes[key]
         print(klass)
 
 
-if __name__ == '__main__':
-    generate('Gtk', '4.0')
+def main():
+    parser = argparse.ArgumentParser(
+        prog="gi_tool.generator", description="generate pygobject stub from gir file"
+    )
+    parser.add_argument("module", help="Gtk, Gst ... etc")
+    parser.add_argument("version", help="1.0, 2.0, 3.0, 4.0 ... etc")
+    parsed = parser.parse_args()
+
+    generate(parsed.module, parsed.version)
+
+
+if __name__ == "__main__":
+    main()

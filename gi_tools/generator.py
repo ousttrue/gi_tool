@@ -113,12 +113,13 @@ class GIMethod:
 
     def __str__(self):
         sio = io.StringIO()
-        if self.doc:
-            sio.write(f'''    """{self.doc}"""\n''')
         parameters = ", ".join(str(p) for p in self.parameters)
         sio.write(
-            f"""    def {self.name}({parameters}) -> {py_type(self.return_type)}:...\n\n"""
+            f"""    def {self.name}({parameters}) -> {py_type(self.return_type)}:\n"""
         )
+        if self.doc:
+            sio.write(f'''        """{self.doc}"""\n''')
+        sio.write("        ...\n\n")
         return sio.getvalue()
 
 
@@ -163,9 +164,10 @@ class GIClass:
 
     def __str__(self):
         sio = io.StringIO()
-        if self.doc:
-            sio.write(f'"""{self.doc}"""\n')
         sio.write(f"class {self.name}:\n")
+        if self.doc:
+            sio.write(f'    """{self.doc}"""\n')
+
         if self.methods:
             for key in self.methods.keys():
                 method = self.methods[key]
@@ -213,12 +215,13 @@ class GIEnum:
 
     def __str__(self) -> str:
         sio = io.StringIO()
-        if self.doc:
-            sio.write(f'"""{self.doc}"""\n')
         if self.is_intflag:
             sio.write(f"class {self.name}(IntFlag):\n")
         else:
             sio.write(f"class {self.name}(Enum):\n")
+        if self.doc:
+            sio.write(f'    """{self.doc}"""\n')
+
         for value in self.values:
             sio.write(f"    {value.name} = {value.value}\n")
             if value.doc:
@@ -311,11 +314,13 @@ from enum import Enum, IntFlag
 """
     )
 
+    # const
     for value in gi_module.constants:
-        print(f"    {value.name} = {value.value}\n")
+        print(f"{value.name} = {value.value}")
         if value.doc:
-            print(f'    """{value.doc}"""\n')
+            print(f'"""{value.doc}"""')
 
+    # class / enum
     for key in sorted(gi_module.classes.keys()):
         klass = gi_module.classes[key]
         print(klass)

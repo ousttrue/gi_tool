@@ -15,7 +15,7 @@ PREFIX = pathlib.Path(os.environ['PKG_CONFIG_PATH']).parent.parent
 class Window(Gtk.ApplicationWindow):
 
     def __init__(self, app):
-        super().__init__(application=app, title='gi_tools')
+        super().__init__(application=app, title='gi_tool')
 
         self.hpaned = Gtk.Paned.new(Gtk.Orientation.HORIZONTAL)
 
@@ -53,7 +53,7 @@ class Window(Gtk.ApplicationWindow):
 class Application(Gtk.Application):
 
     def __init__(self):
-        Gtk.Application.__init__(self, application_id='gi_tools')
+        Gtk.Application.__init__(self, application_id='gi_tool')
 
     def do_activate(self):
         win = Window(self)

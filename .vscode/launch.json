@@ -8,18 +8,18 @@
             "name": "generator",
             "type": "python",
             "request": "launch",
-            "module": "gi_tools.generator",
+            "module": "gi_tool.generator",
             "args": [
-                "Gst",
-                "1.0"
+                "Gtk",
+                "4.0"
             ],
             "justMyCode": true
         },
         {
-            "name": "gi_tools",
+            "name": "gi_tool",
             "type": "python",
             "request": "launch",
-            "module": "gi_tools",
+            "module": "gi_tool",
             "justMyCode": true
         },
     ]

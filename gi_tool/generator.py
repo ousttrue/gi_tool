@@ -69,7 +69,9 @@ class GIParam:
 
 
 class GIMethod:
-    def __init__(self, element: ET.Element, is_static=False) -> None:
+    def __init__(
+        self, element: ET.Element, is_static=False, return_type: Optional[str] = None
+    ) -> None:
         self.name = element.attrib["name"]
         self.doc = None
         self.return_type = None
@@ -94,6 +96,9 @@ class GIMethod:
                     print(tag)
                     assert False
 
+        if return_type:
+            self.return_type = return_type
+
     def parse_return(self, element: ET.Element):
         for child in element:
             tag = get_tag(child)
@@ -117,7 +122,7 @@ class GIMethod:
         sio = io.StringIO()
         if self.is_static:
             sio.write(f"{indent}@staticmethod\n")
-        parameters = ", ".join(str(p) for p in self.parameters)        
+        parameters = ", ".join(str(p) for p in self.parameters)
         sio.write(
             f"""{indent}def {self.name}({parameters}) -> {py_type(self.return_type)}:\n"""
         )
@@ -143,7 +148,11 @@ class GIClass:
             match tag:
                 case "method":
                     self.methods.append(GIMethod(child))
-                case "constructor" | "function":
+                case "constructor":
+                    self.methods.append(
+                        GIMethod(child, is_static=True, return_type=self.name)
+                    )
+                case "function":
                     self.methods.append(GIMethod(child, is_static=True))
                 case "doc":
                     self.doc = child.text
@@ -344,7 +353,8 @@ from enum import Enum, IntFlag
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="gi_tool.generator", description="generate pygobject stub from {gir_dir}/{module}-{version}.gir"
+        prog="gi_tool.generator",
+        description="generate pygobject stub from {gir_dir}/{module}-{version}.gir",
     )
     parser.add_argument("gir_dir", help="PREFIX/share/gir-1.0")
     parser.add_argument("module", help="Gtk, Gst ... etc")

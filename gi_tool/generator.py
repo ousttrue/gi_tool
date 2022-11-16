@@ -36,6 +36,8 @@ def py_type(gir_type: Optional[str]) -> str:
             return "List[str]"
         case "gpointer":
             return "object"
+        case 'none':
+            return 'None'
         case _:
             return f"'{gir_type}'"
 
@@ -146,7 +148,7 @@ class GIClass:
         for child in element:
             tag = get_tag(child)
             match tag:
-                case "method":
+                case "method" | "virtual-method":
                     self.methods.append(GIMethod(child))
                 case "constructor":
                     self.methods.append(
@@ -168,11 +170,11 @@ class GIClass:
                     pass
                 case "implements":
                     pass
-                case "virtual-method":
-                    pass
                 case "field":
                     pass
                 case "union":
+                    pass
+                case 'prerequisite':
                     pass
                 case _:
                     assert False
@@ -290,7 +292,7 @@ class GIModule:
         for child in namespace:
             tag = get_tag(child)
             match tag:
-                case "class":
+                case "class" | 'interface':
                     klass = GIClass(child)
                     self.classes[klass.name] = klass
                 case "enumeration":
@@ -308,8 +310,6 @@ class GIModule:
                 case "function-macro":
                     pass
                 case "record":
-                    pass
-                case "interface":
                     pass
                 case "callback":
                     pass
@@ -330,7 +330,7 @@ def generate(gir_dir: pathlib.Path, name: str, version: str):
     print(
         """from typing import List
 import gi
-from gi.repository import Pango, Gdk, Gio, GObject
+from gi.repository import Pango, Gdk, Gio, GObject, Gsk
 from enum import Enum, IntFlag
 """
     )

@@ -1,6 +1,6 @@
 # gi_tool
 
-## gi_tool.girstubgen
+## gi_tool.girstub
 
 Python stub generator for pygobject from `gir` file.
 A [pygobject-stubs](https://github.com/pygobject/pygobject-stubs/tree/master/tools) alternative.
@@ -24,6 +24,14 @@ set to be GTK_TREE_VIEW_COLUMN_FIXED."""
 
 ## usage
 
+１個だけ処理する
+
 ```
-> py -m gi_tool.girstubgen C:/gnome/share/gir-1.0 Gtk 4.0 > C:\Python311\Lib\site-packages\gi-stubs\repository\Gtk.pyi
+> python gi_tool/girstub.py gen C:/gnome/share/gir-1.0 Gtk 4.0 > C:\Python311\Lib\site-packages\gi-stubs\repository\Gtk.pyi
+```
+
+まとめて処理する
+
+```
+> python gi_tool/girstub.py all C:/gnome/share/gir-1.0 > C:\Python311\Lib\site-packages
 ```

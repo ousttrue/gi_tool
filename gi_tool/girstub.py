@@ -1,3 +1,4 @@
+from typing import List, Optional, NamedTuple, TextIO
 import pathlib
 import argparse
 import io
@@ -7,7 +8,10 @@ import gi
 import importlib
 import inspect
 import xml.etree.ElementTree as ET
-from typing import List, Optional, NamedTuple
+import logging
+import sys
+
+logger = logging.getLogger(__name__)
 
 NS = {"": "http://www.gtk.org/introspection/core/1.0"}
 C_NS = {"c": "http://www.gtk.org/introspection/c/1.0"}
@@ -53,7 +57,7 @@ class GIParam:
                 case "doc":
                     self.doc = child.text
                 case "type":
-                    self.type = child.attrib["name"]
+                    self.type = child.attrib.get("name")
                 case "array":
                     self.type = f"List[{child.find('type', NS).attrib['name']}]"
                 case "varargs":
@@ -90,12 +94,13 @@ class GIMethod:
                     pass
                 case "doc":
                     self.doc = child.text
-                case "doc-deprecated":
-                    pass
+                case "doc-deprecated" | "doc-version":
+                    if not self.doc:
+                        self.doc = child.text
                 case "source-position":
                     pass
                 case _:
-                    print(tag)
+                    logger.error(tag)
                     assert False
 
         if return_type:
@@ -108,7 +113,7 @@ class GIMethod:
                 case "doc":
                     pass
                 case "type":
-                    self.return_type = child.attrib["name"]
+                    self.return_type = child.attrib.get("name")
 
     def parse_parameters(self, element: ET.Element):
         for child in element:
@@ -141,7 +146,7 @@ class GIClass:
     def __init__(self, element: ET.Element) -> None:
         self.name = element.attrib["name"]
         self.doc = None
-        self.parents=[]
+        self.parents = []
         parent = element.attrib.get("parent")
         if parent:
             self.parents.append(parent)
@@ -162,7 +167,7 @@ class GIClass:
                 case "doc":
                     self.doc = child.text
                 case "implements":
-                    self.parents.append(child.attrib['name'])
+                    self.parents.append(child.attrib["name"])
                 case "doc-deprecated":
                     pass
                 case "source-position":
@@ -179,13 +184,15 @@ class GIClass:
                     pass
                 case "prerequisite":
                     pass
+                case "attribute":
+                    pass
                 case _:
                     assert False
 
     def __str__(self):
         sio = io.StringIO()
         if self.parents:
-            parent = ', '.join(self.parents)
+            parent = ", ".join(self.parents)
             sio.write(f"class {self.name}({parent}):\n")
         else:
             sio.write(f"class {self.name}:\n")
@@ -228,6 +235,9 @@ class GIEnum:
             match tag:
                 case "doc":
                     self.doc = child.text
+                case "doc-deprecated" | "doc-version":
+                    if not self.doc:
+                        self.doc = child.text
                 case "member":
                     self.values.append(GIEnumValue.from_element(child))
                 case "function":
@@ -256,42 +266,15 @@ class GIEnum:
 
 
 class GIModule:
-    def __init__(self, gir_dir: pathlib.Path, module: types.ModuleType) -> None:
-        assert gir_dir.exists()
+    def __init__(self, gir: pathlib.Path) -> None:
         self.constants: List[GIEnumValue] = []
         self.classes: dict[str, object] = {}
         self.functions: List[GIMethod] = []
 
-        gir = gir_dir / f"{module._namespace}-{module._version}.gir"
         tree = ET.parse(gir)
         root = tree.getroot()
         namespace = root.find("namespace", NS)
         assert namespace
-
-        # for key in dir(module):
-        #     attr = getattr(module, key)
-        #     self.process_obj(attr, namespace)
-
-        # def process_obj(self, parent, gir: ET.Element):
-        # print(parent)
-        # for key in dir(parent):
-        #     if key.startswith('__'):
-        #         continue
-        #     obj = getattr(parent, key)
-        #     if callable(obj) or inspect.isroutine(obj):
-        #         try:
-        #             sig = inspect.signature(obj)
-        #             print(f'[override]{key}{sig}')
-        #         except:
-        #             # get gir
-        #             print(f'[gir]{key}()')
-        #     elif inspect.isdatadescriptor(obj):
-        #         # props
-        #         print(f'[get/set]{key}')
-        #     elif str(type(obj)) == "<class 'gi._gi.GProps'>":
-        #         print(f'[GProps]{key}')
-        #     else:
-        #         assert False
 
         for child in namespace:
             tag = get_tag(child)
@@ -321,52 +304,94 @@ class GIModule:
                     pass
                 case "docsection":
                     pass
+                case "union":
+                    pass
                 case _:
                     assert False
 
 
-def generate(gir_dir: pathlib.Path, name: str, version: str):
-    gi.require_version(name, version)
-    module = importlib.import_module(f".{name}", "gi.repository")
+def generate(gir_file: pathlib.Path, out: TextIO):
+    gi_module = GIModule(gir_file)
 
-    gi_module = GIModule(gir_dir, module)
-
-    print(
+    out.write(
         """from typing import List
 import gi
 from gi.repository import Pango, Gdk, Gio, GObject, Gsk
 from enum import Enum, IntFlag
+
 """
     )
 
     # const
     for value in gi_module.constants:
-        print(f"{value.name} = {value.value}")
+        out.write(f"{value.name} = {value.value}\n")
         if value.doc:
-            print(f'"""{value.doc}"""')
+            out.write(f'"""{value.doc}"""\n')
 
     # class / enum
     for key in sorted(gi_module.classes.keys()):
         klass = gi_module.classes[key]
-        print(klass)
+        out.write(str(klass))
+        out.write("\n")
 
     # functions
     for f in gi_module.functions:
-        print(f.to_str(indent=""))
+        out.write(f.to_str(indent=""))
+        out.write("\n")
+
+
+def generate_all(gir_dir: pathlib.Path, site_packages: pathlib.Path):
+    dst = site_packages / "gi-stubs/repository"
+    if not dst.exists():
+        logger.info(f"mkdir: {dst}")
+        dst.mkdir(exist_ok=True, parents=True)
+
+    for e in gir_dir.iterdir():
+        if not e.is_file():
+            continue
+        if e.suffix != ".gir":
+            continue
+        pyi = dst / (e.stem + ".pyi")
+
+        logger.info(e)
+        with pyi.open(mode="w") as w:
+            generate(e, w)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="gi_tool.girstubgen",
+        prog="girstub",
         description="generate pygobject stub from {gir_dir}/{module}-{version}.gir",
     )
-    parser.add_argument("gir_dir", help="PREFIX/share/gir-1.0")
-    parser.add_argument("module", help="Gtk, Gst ... etc")
-    parser.add_argument("version", help="1.0, 2.0, 3.0, 4.0 ... etc")
-    parsed = parser.parse_args()
+    subparsers = parser.add_subparsers(dest="subparser_name")
 
-    generate(pathlib.Path(parsed.gir_dir), parsed.module, parsed.version)
+    # gen
+    parser_gen = subparsers.add_parser("gen", help="Print pyi from gen")
+    parser_gen.add_argument("gir_dir", help="Path to PREFIX/share/gir-1.0")
+    parser_gen.add_argument("module", help="Gtk, Gst ... etc")
+    parser_gen.add_argument("version", help="1.0, 2.0, 3.0, 4.0 ... etc")
+
+    # all
+    parser_all = subparsers.add_parser("all", help="Generate pyi files from *.gen")
+    parser_all.add_argument("gir_dir", help="Path to PREFIX/share/gir-1.0")
+    parser_all.add_argument(
+        "site_packages",
+        help="Path to python/lib/site-packages. Write {site_packages}/gi-stubs/repository/*.pyi files.",
+    )
+
+    # dispatch
+    args = parser.parse_args()
+    match args.subparser_name:
+        case "gen":
+            gir_dir = pathlib.Path(args.gir_dir)
+            gir = gir_dir / f"{args.module}-{args.version}.gir"
+            generate(gir, sys.stdout)
+        case "all":
+            generate_all(pathlib.Path(args.gir_dir), pathlib.Path(args.site_packages))
+        case _:
+            parser.print_help()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     main()

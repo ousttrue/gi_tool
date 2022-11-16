@@ -26,7 +26,7 @@ def py_type(gir_type: Optional[str]) -> str:
     match gir_type:
         case "gboolean":
             return "bool"
-        case "gint" | "guint" | "gsize" | "gssize":
+        case "gint" | "guint" | "guint32" | "gsize" | "gssize":
             return "int"
         case "gfloat" | "gdouble":
             return "float"
@@ -36,8 +36,8 @@ def py_type(gir_type: Optional[str]) -> str:
             return "List[str]"
         case "gpointer":
             return "object"
-        case 'none':
-            return 'None'
+        case "none":
+            return "None"
         case _:
             return f"'{gir_type}'"
 
@@ -141,7 +141,10 @@ class GIClass:
     def __init__(self, element: ET.Element) -> None:
         self.name = element.attrib["name"]
         self.doc = None
-        self.parent = element.attrib.get("parent")
+        self.parents=[]
+        parent = element.attrib.get("parent")
+        if parent:
+            self.parents.append(parent)
         assert self.name
         self.methods: List[GIMethod] = []
 
@@ -158,6 +161,8 @@ class GIClass:
                     self.methods.append(GIMethod(child, is_static=True))
                 case "doc":
                     self.doc = child.text
+                case "implements":
+                    self.parents.append(child.attrib['name'])
                 case "doc-deprecated":
                     pass
                 case "source-position":
@@ -168,21 +173,20 @@ class GIClass:
                     pass
                 case "signal":
                     pass
-                case "implements":
-                    pass
                 case "field":
                     pass
                 case "union":
                     pass
-                case 'prerequisite':
+                case "prerequisite":
                     pass
                 case _:
                     assert False
 
     def __str__(self):
         sio = io.StringIO()
-        if self.parent:
-            sio.write(f"class {self.name}({self.parent}):\n")
+        if self.parents:
+            parent = ', '.join(self.parents)
+            sio.write(f"class {self.name}({parent}):\n")
         else:
             sio.write(f"class {self.name}:\n")
         if self.doc:
@@ -292,7 +296,7 @@ class GIModule:
         for child in namespace:
             tag = get_tag(child)
             match tag:
-                case "class" | 'interface':
+                case "class" | "interface":
                     klass = GIClass(child)
                     self.classes[klass.name] = klass
                 case "enumeration":

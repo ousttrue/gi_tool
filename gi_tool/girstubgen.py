@@ -357,7 +357,7 @@ from enum import Enum, IntFlag
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="gi_tool.generator",
+        prog="gi_tool.girstubgen",
         description="generate pygobject stub from {gir_dir}/{module}-{version}.gir",
     )
     parser.add_argument("gir_dir", help="PREFIX/share/gir-1.0")

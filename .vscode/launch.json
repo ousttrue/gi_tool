@@ -5,10 +5,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "generator",
+            "name": "girstubgen",
             "type": "python",
             "request": "launch",
-            "module": "gi_tool.generator",
+            "module": "gi_tool.girstubgen",
             "args": [
                 "${env:PREFIX}/share/gir-1.0",
                 "Gtk",

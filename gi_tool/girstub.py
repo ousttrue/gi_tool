@@ -59,7 +59,7 @@ class GIParam:
                 case "type":
                     self.type = child.attrib.get("name")
                 case "array":
-                    self.type = f"List[{child.find('type', NS).attrib['name']}]"
+                    self.type = f"List[{child.find('type', NS).attrib['name']}]" # type: ignore
                 case "varargs":
                     self.type = f"varargs"
                 case _:
@@ -351,11 +351,20 @@ def generate_all(gir_dir: pathlib.Path, site_packages: pathlib.Path):
             continue
         if e.suffix != ".gir":
             continue
-        pyi = dst / (e.stem + ".pyi")
+        m = re.search(r'(.*)-(\d+\.\d+)$', e.stem)
+        if m:
+            name = m.group(1)
+        else:
+            name = e.stem
+        pyi = dst / (name + ".pyi")
 
-        logger.info(e)
+        logger.info(pyi.name)
         with pyi.open(mode="w") as w:
             generate(e, w)
+
+    init = dst / '__init__.py'
+    if not init.exists():
+        init.write_text('')
 
 
 def main():

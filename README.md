@@ -24,14 +24,19 @@ set to be GTK_TREE_VIEW_COLUMN_FIXED."""
 
 ## usage
 
-１個だけ処理する
+Generate a stub from a gir, Send to standard output.
 
 ```
+# usage: girstub gen gir_dir module version
+
 > python gi_tool/girstub.py gen C:/gnome/share/gir-1.0 Gtk 4.0 > C:\Python311\Lib\site-packages\gi-stubs\repository\Gtk.pyi
 ```
 
-まとめて処理する
+Convert the gifs in folder and write each result to the output folder.
 
 ```
-> python gi_tool/girstub.py all C:/gnome/share/gir-1.0 > C:\Python311\Lib\site-packages
+# usage: girstub all gir_dir site_packages
+
+> python gi_tool/girstub.py all C:/gnome/share/gir-1.0 C:\Python311\Lib\site-packages
 ```
+

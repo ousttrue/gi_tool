@@ -13,6 +13,8 @@
                 "all",
                 "${env:PREFIX}/share/gir-1.0",
                 "C:/python311/lib/site-packages",
+                "--gtk",
+                "3"
             ],
             "justMyCode": true
         },

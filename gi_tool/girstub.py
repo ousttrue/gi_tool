@@ -10,12 +10,23 @@ import inspect
 import xml.etree.ElementTree as ET
 import logging
 import sys
+import keyword
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 NS = {"": "http://www.gtk.org/introspection/core/1.0"}
 C_NS = {"c": "http://www.gtk.org/introspection/c/1.0"}
 PATTERN = re.compile(r"\{([^}]+)\}(.+)")
+
+
+def escape_identifier(src: str) -> str:
+    if src in keyword.kwlist:
+        return "_" + src
+    else:
+        return src
+
+
+python_keywords = ["raise", "continue"]
 
 
 def get_tag(child: ET.Element) -> str:
@@ -30,7 +41,20 @@ def py_type(gir_type: Optional[str]) -> str:
     match gir_type:
         case "gboolean":
             return "bool"
-        case "gint" | "guint" | "guint32" | "gsize" | "gssize":
+        case (
+            "gint"
+            | "gint8"
+            | "gint16"
+            | "gint32"
+            | "gint64"
+            | "guint"
+            | "guint8"
+            | "guint16"
+            | "guint32"
+            | "guint64"
+            | "gsize"
+            | "gssize"
+        ):
             return "int"
         case "gfloat" | "gdouble":
             return "float"
@@ -71,7 +95,42 @@ class GIParam:
         elif self.name == "...":
             return "*args"
         else:
-            return f"{self.name}: {py_type(self.type)}"
+            return f"{escape_identifier(self.name)}: {py_type(self.type)}"
+
+
+def get_child_type_name(e: ET.Element) -> str:
+    t = e.find("type", NS)
+    name = t.attrib.get("name")
+    if name:
+        return name
+    return t.attrib["{http://www.gtk.org/introspection/c/1.0}type"]
+
+
+class GIField:
+    def __init__(self, element: ET.Element) -> None:
+        self.name = element.attrib["name"]
+        self.type = "Any"
+        self.doc = None
+        for child in element:
+            tag = get_tag(child)
+            match tag:
+                case "type":
+                    self.type = child.attrib.get("name")
+                case "doc":
+                    self.doc = child.text
+                case "callback":
+                    pass
+                case "array":
+                    self.type = f"List[{get_child_type_name(child)}]"  # type: ignore
+                case _:
+                    assert False
+
+    def to_str(self, indent="    ") -> str:
+        sio = io.StringIO()
+        sio.write(f"{indent}{escape_identifier(self.name)}: {py_type(self.type)}\n")
+        if self.doc:
+            sio.write(f'''{indent}"""{self.doc}"""\n''')
+        return sio.getvalue()
 
 
 class GIMethod:
@@ -100,7 +159,7 @@ class GIMethod:
                 case "source-position":
                     pass
                 case _:
-                    logger.error(tag)
+                    LOGGER.error(tag)
                     assert False
 
         if return_type:
@@ -131,7 +190,7 @@ class GIMethod:
             sio.write(f"{indent}@staticmethod\n")
         parameters = ", ".join(str(p) for p in self.parameters)
         sio.write(
-            f"""{indent}def {self.name}({parameters}) -> {py_type(self.return_type)}:\n"""
+            f"""{indent}def {escape_identifier(self.name)}({parameters}) -> {py_type(self.return_type)}:\n"""
         )
         if self.doc:
             sio.write(f'''{indent}    """{self.doc}"""\n''')
@@ -152,6 +211,7 @@ class GIClass:
             self.parents.append(parent)
         assert self.name
         self.methods: List[GIMethod] = []
+        self.fields: List[GIField] = []
 
         for child in element:
             tag = get_tag(child)
@@ -168,6 +228,8 @@ class GIClass:
                     self.doc = child.text
                 case "implements":
                     self.parents.append(child.attrib["name"])
+                case "field":
+                    self.fields.append(GIField(child))
                 case "doc-deprecated":
                     pass
                 case "source-position":
@@ -177,8 +239,6 @@ class GIClass:
                 case "property":
                     pass
                 case "signal":
-                    pass
-                case "field":
                     pass
                 case "union":
                     pass
@@ -199,10 +259,15 @@ class GIClass:
         if self.doc:
             sio.write(f'    """{self.doc}"""\n')
 
+        if self.fields:
+            for field in self.fields:
+                sio.write(field.to_str(indent="    "))
+
         if self.methods:
             for method in self.methods:
                 sio.write(method.to_str(indent="    "))
-        else:
+
+        if not self.fields and not self.methods:
             sio.write("    pass\n")
         return sio.getvalue()
 
@@ -314,7 +379,7 @@ def generate(gir_file: pathlib.Path, out: TextIO):
     gi_module = GIModule(gir_file)
 
     out.write(
-        """from typing import List
+        """from typing import List, Any
 import gi
 from gi.repository import Pango, Gdk, Gio, GObject, Gsk
 from enum import Enum, IntFlag
@@ -340,12 +405,19 @@ from enum import Enum, IntFlag
         out.write("\n")
 
 
-def generate_all(gir_dir: pathlib.Path, site_packages: pathlib.Path):
+class Entry(NamedTuple):
+    path: pathlib.Path
+    name: str
+    version: float = 0
+
+
+def generate_all(gir_dir: pathlib.Path, site_packages: pathlib.Path, gtk_version: int):
     dst = site_packages / "gi-stubs/repository"
     if not dst.exists():
-        logger.info(f"mkdir: {dst}")
+        LOGGER.info(f"mkdir: {dst}")
         dst.mkdir(exist_ok=True, parents=True)
 
+    gir_map = {}
     for e in gir_dir.iterdir():
         if not e.is_file():
             continue
@@ -353,14 +425,33 @@ def generate_all(gir_dir: pathlib.Path, site_packages: pathlib.Path):
             continue
         m = re.search(r"(.*)-(\d+\.\d+)$", e.stem)
         if m:
-            name = m.group(1)
+            entry = Entry(e, m.group(1), float(m.group(2)))
         else:
-            name = e.stem
-        pyi = dst / (name + ".pyi")
+            entry = Entry(e, e.stem)
 
-        logger.info(pyi.name)
+        values = gir_map.get(entry.name)
+        if values:
+            values.append(entry)
+        else:
+            gir_map[entry.name] = [entry]
+
+    for k, values in gir_map.items():
+        pyi = dst / (k + ".pyi")
+
+        LOGGER.info(pyi.name)
         with pyi.open(mode="w") as w:
-            generate(e, w)
+            if len(values) > 1:
+                # multiple version
+                selected = None
+                for v in values:
+                    if v.version == gtk_version:
+                        generate(v.path, w)
+                        selected = v
+                        break
+                if not selected:
+                    raise Exception(f"{values}")
+            else:
+                generate(values[0].path, w)
 
     init = dst / "__init__.py"
     if not init.exists():
@@ -387,6 +478,7 @@ def main():
         "site_packages",
         help="Path to python/lib/site-packages. Write {site_packages}/gi-stubs/repository/*.pyi files.",
     )
+    parser_all.add_argument("--gtk", help="gtk version. 3 or 4", default="4", type=int)
 
     # dispatch
     args = parser.parse_args()
@@ -396,7 +488,9 @@ def main():
             gir = gir_dir / f"{args.module}-{args.version}.gir"
             generate(gir, sys.stdout)
         case "all":
-            generate_all(pathlib.Path(args.gir_dir), pathlib.Path(args.site_packages))
+            generate_all(
+                pathlib.Path(args.gir_dir), pathlib.Path(args.site_packages), args.gtk
+            )
         case _:
             parser.print_help()
 

@@ -59,7 +59,7 @@ class GIParam:
                 case "type":
                     self.type = child.attrib.get("name")
                 case "array":
-                    self.type = f"List[{child.find('type', NS).attrib['name']}]" # type: ignore
+                    self.type = f"List[{child.find('type', NS).attrib['name']}]"  # type: ignore
                 case "varargs":
                     self.type = f"varargs"
                 case _:
@@ -279,7 +279,7 @@ class GIModule:
         for child in namespace:
             tag = get_tag(child)
             match tag:
-                case "class" | "interface":
+                case "class" | "interface" | "record":
                     klass = GIClass(child)
                     self.classes[klass.name] = klass
                 case "enumeration":
@@ -351,7 +351,7 @@ def generate_all(gir_dir: pathlib.Path, site_packages: pathlib.Path):
             continue
         if e.suffix != ".gir":
             continue
-        m = re.search(r'(.*)-(\d+\.\d+)$', e.stem)
+        m = re.search(r"(.*)-(\d+\.\d+)$", e.stem)
         if m:
             name = m.group(1)
         else:
@@ -362,9 +362,9 @@ def generate_all(gir_dir: pathlib.Path, site_packages: pathlib.Path):
         with pyi.open(mode="w") as w:
             generate(e, w)
 
-    init = dst / '__init__.py'
+    init = dst / "__init__.py"
     if not init.exists():
-        init.write_text('')
+        init.write_text("")
 
 
 def main():

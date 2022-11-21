@@ -242,6 +242,8 @@ class GIClass:
                     pass
                 case "union":
                     pass
+                case "record":
+                    pass
                 case "prerequisite":
                     pass
                 case "attribute":
@@ -344,7 +346,7 @@ class GIModule:
         for child in namespace:
             tag = get_tag(child)
             match tag:
-                case "class" | "interface" | "record":
+                case "class" | "interface" | "record" | "union":
                     klass = GIClass(child)
                     self.classes[klass.name] = klass
                 case "enumeration":
@@ -368,8 +370,6 @@ class GIModule:
                 case "boxed":
                     pass
                 case "docsection":
-                    pass
-                case "union":
                     pass
                 case _:
                     assert False

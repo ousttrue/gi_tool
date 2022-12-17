@@ -1,4 +1,5 @@
 from typing import List, Optional, NamedTuple, TextIO
+import site
 import pathlib
 import argparse
 import io
@@ -474,10 +475,10 @@ def main():
     # all
     parser_all = subparsers.add_parser("all", help="Generate pyi files from *.gen")
     parser_all.add_argument("gir_dir", help="Path to PREFIX/share/gir-1.0")
-    parser_all.add_argument(
-        "site_packages",
-        help="Path to python/lib/site-packages. Write {site_packages}/gi-stubs/repository/*.pyi files.",
-    )
+    # parser_all.add_argument(
+    #     "site_packages",
+    #     help="Path to python/lib/site-packages. Write {site_packages}/gi-stubs/repository/*.pyi files.",
+    # )
     parser_all.add_argument("--gtk", help="gtk version. 3 or 4", default="4", type=int)
 
     # dispatch
@@ -488,8 +489,12 @@ def main():
             gir = gir_dir / f"{args.module}-{args.version}.gir"
             generate(gir, sys.stdout)
         case "all":
+            gir_dir = pathlib.Path(args.gir_dir)
+            if gir_dir == pathlib.Path('/share/gir-1.0'):
+                gir_dir = pathlib.Path('/usr/share/gir-1.0')
+            dst = pathlib.Path(site.USER_SITE) # type: ignore
             generate_all(
-                pathlib.Path(args.gir_dir), pathlib.Path(args.site_packages), args.gtk
+                gir_dir, dst, args.gtk
             )
         case _:
             parser.print_help()

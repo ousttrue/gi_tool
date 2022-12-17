@@ -11,10 +11,10 @@
             "module": "gi_tool.girstub",
             "args": [
                 "all",
-                "${env:PREFIX}/share/gir-1.0",
-                "C:/python311/lib/site-packages",
+                // "${env:PREFIX}/share/gir-1.0",
+                "${env:HOME}/ghq/github.com/gtk-rs/gir-files",
                 "--gtk",
-                "3"
+                "4"
             ],
             "justMyCode": true
         },
